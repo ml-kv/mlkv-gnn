@@ -239,6 +239,7 @@ file(GLOB DGL_SRC
   src/geometry/*.cc
   src/geometry/cpu/*.cc
   src/partition/*.cc
+  src/storages/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1
@@ -349,6 +350,7 @@ endif(EXTERNAL_PHMAP_PATH)
 
 target_include_directories(dgl PRIVATE "tensoradapter/include")
 target_include_directories(dgl PRIVATE "third_party/pcg/include")
+target_include_directories(dgl PRIVATE "third_party/faster/cc/src")
 
 if(USE_LIBURING)
   if(CMAKE_SYSTEM_NAME MATCHES "Linux")
@@ -425,6 +427,12 @@ if(USE_CUDA)
   message(STATUS "Build with HugeCTR GPU embedding cache.")
 endif(USE_CUDA)
 
+# Compile FASTER
+if(NOT MSVC)
+  add_subdirectory("third_party/faster/cc")
+  list(APPEND DGL_LINKER_LIBS faster stdc++fs uuid tbb aio)
+endif(NOT MSVC)
+
 # support PARALLEL_ALGORITHMS
 if (LIBCXX_ENABLE_PARALLEL_ALGORITHMS)
   add_definitions(-DPARALLEL_ALGORITHMS)
@@ -482,7 +490,11 @@ install(TARGETS dgl DESTINATION lib${LIB_SUFFIX})
 # Testing
 if(BUILD_CPP_TEST)
   message(STATUS "Build with unittest")
-  add_subdirectory(./third_party/googletest)
+  if (NOT TARGET gtest)
+    add_subdirectory(./third_party/googletest)
+  else()
+    message(STATUS "Target gtest already exists. Skipping add_subdirectory.")
+  endif()
   enable_testing()
   include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
   include_directories("include")
