@@ -156,6 +156,7 @@ file(GLOB DGL_SRC
   src/geometry/*.cc
   src/geometry/cpu/*.cc
   src/partition/*.cc
+  src/storages/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1
@@ -212,6 +213,7 @@ target_include_directories(dgl PRIVATE "third_party/METIS/include/")
 target_include_directories(dgl PRIVATE "tensoradapter/include")
 target_include_directories(dgl PRIVATE "third_party/nanoflann/include")
 target_include_directories(dgl PRIVATE "third_party/libxsmm/include")
+target_include_directories(dgl PRIVATE "third_party/faster/cc/src")
 
 
 # For serialization
@@ -268,6 +270,12 @@ if(USE_TVM)
   list(APPEND DGL_LINKER_LIBS featgraph_runtime)
   message(STATUS "Build with TVM runtime and featgraph kernels.")
 endif(USE_TVM)
+
+# Compile FASTER
+if(NOT MSVC)
+  add_subdirectory("third_party/faster/cc")
+  list(APPEND DGL_LINKER_LIBS faster stdc++fs uuid tbb aio)
+endif(NOT MSVC)
 
 # support PARALLEL_ALGORITHMS
 if (LIBCXX_ENABLE_PARALLEL_ALGORITHMS)

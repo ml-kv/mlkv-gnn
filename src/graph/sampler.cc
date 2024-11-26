@@ -184,11 +184,11 @@ class EdgeSamplerObject: public Object {
 /*
  * Uniformly sample integers from [0, set_size) without replacement.
  */
-void RandomSample(size_t set_size, size_t num, std::vector<size_t>* out) {
+void RandomSample(size_t set_size, size_t num, std::vector<size_t>* out, size_t lower = 0) {
   if (num < set_size) {
     std::unordered_set<size_t> sampled_idxs;
     while (sampled_idxs.size() < num) {
-      sampled_idxs.insert(RandomEngine::ThreadLocal()->RandInt(set_size));
+      sampled_idxs.insert(RandomEngine::ThreadLocal()->RandInt(set_size) + lower);
     }
     out->insert(out->end(), sampled_idxs.begin(), sampled_idxs.end());
   } else {
@@ -200,14 +200,14 @@ void RandomSample(size_t set_size, size_t num, std::vector<size_t>* out) {
 }
 
 void RandomSample(size_t set_size, size_t num, const std::vector<size_t> &exclude,
-                  std::vector<size_t>* out) {
+                  std::vector<size_t>* out, size_t lower = 0) {
   std::unordered_map<size_t, int> sampled_idxs;
   for (auto v : exclude) {
     sampled_idxs.insert(std::pair<size_t, int>(v, 0));
   }
   if (num + exclude.size() < set_size) {
     while (sampled_idxs.size() < num + exclude.size()) {
-      size_t rand = RandomEngine::ThreadLocal()->RandInt(set_size);
+      size_t rand = RandomEngine::ThreadLocal()->RandInt(set_size) + lower;
       sampled_idxs.insert(std::pair<size_t, int>(rand, 1));
     }
     for (auto it = sampled_idxs.begin(); it != sampled_idxs.end(); it++) {
@@ -1457,6 +1457,7 @@ public:
     batch_curr_id_ = 0;
     num_seeds_ = seed_edges->shape[0];
     max_batch_id_ = (num_seeds_ + batch_size - 1) / batch_size;
+    neg_sample_range_ = false;
 
     // TODO(song): Tricky thing here to make sure gptr_ has coo cache
     gptr_->FindEdge(0);
@@ -1540,21 +1541,40 @@ public:
     }
   }
 
+  void SetNegRange(int64_t neg_sample_idx_lower, int64_t neg_sample_idx_upper) {
+    neg_sample_range_ = true;
+    neg_sample_idx_lower_ = neg_sample_idx_lower;
+    neg_sample_idx_upper_ = neg_sample_idx_upper;
+  }
+
   DGL_DECLARE_OBJECT_TYPE_INFO(UniformEdgeSamplerObject, Object);
 
 private:
   void randomSample(size_t set_size, size_t num, std::vector<size_t>* out) {
-    RandomSample(set_size, num, out);
+    if (neg_sample_range_) {
+      RandomSample(neg_sample_idx_upper_ - neg_sample_idx_lower_,
+                   num, out, neg_sample_idx_lower_);
+    } else {
+      RandomSample(set_size, num, out);
+    }
   }
 
   void randomSample(size_t set_size, size_t num, const std::vector<size_t> &exclude,
                     std::vector<size_t>* out) {
-    RandomSample(set_size, num, exclude, out);
+    if (neg_sample_range_) {
+      RandomSample(neg_sample_idx_upper_ - neg_sample_idx_lower_,
+                   num, exclude, out, neg_sample_idx_lower_);
+    } else {
+      RandomSample(set_size, num, exclude, out);
+    }
   }
 
   int64_t batch_curr_id_;
   int64_t max_batch_id_;
   int64_t num_seeds_;
+  bool neg_sample_range_;
+  int64_t neg_sample_idx_lower_;
+  int64_t neg_sample_idx_upper_;
 };
 
 class UniformEdgeSampler: public ObjectRef {
@@ -1628,6 +1648,14 @@ DGL_REGISTER_GLOBAL("sampling._CAPI_ResetUniformEdgeSample")
 .set_body([] (DGLArgs args, DGLRetValue* rv) {
   UniformEdgeSampler sampler = args[0];
   sampler->Reset();
+});
+
+DGL_REGISTER_GLOBAL("sampling._CAPI_SetNegRangeUniformEdgeSample")
+.set_body([] (DGLArgs args, DGLRetValue* rv) {
+  UniformEdgeSampler sampler = args[0];
+  const int64_t neg_sample_idx_lower = args[1];
+  const int64_t neg_sample_idx_upper = args[2];
+  sampler->SetNegRange(neg_sample_idx_lower, neg_sample_idx_upper);
 });
 
 template<typename ValueType>
